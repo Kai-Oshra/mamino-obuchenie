@@ -1,1 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Фонетический разбор — учимся играя</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <!-- Сюда рендерятся экраны -->
+    <div id="screen" class="screen"></div>
+  </main>
 
+  <!-- Плавающая буква-индикатор (кружок/треугольник/квадрат) -->
+  <div id="floating-shape" class="floating-shape hidden" aria-hidden="true">
+    <span id="floating-letter"></span>
+    <span id="pair-badge" class="pair-badge hidden"></span>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
