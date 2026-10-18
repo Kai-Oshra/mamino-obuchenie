@@ -120,7 +120,7 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
 .hint-text.ok { background: #e9fbf3; border-left-color: var(--ok); color: #1d6b50; }
 
 /* =========================================
-   ФИГУРЫ
+   ФИГУРЫ (Идеальный рендер)
    ========================================= */
 .shape-base {
   display: inline-flex; align-items: center; justify-content: center;
@@ -128,6 +128,7 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
   color: var(--text); background: #ffffff; border: 3px solid var(--text);
   box-shadow: 0 8px 20px rgba(31,42,68,.14); border-radius: 50%;
   flex-shrink: 0; position: relative; margin: 0 auto;
+  line-height: 1;
   transition: border-radius .5s cubic-bezier(.68,-0.55,.27,1.55), background .45s ease, color .35s ease, border-color .35s ease, transform .3s;
 }
 
@@ -139,18 +140,29 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
 }
 
 .shape-base.sq { border-radius: 18px; }
-.shape-base.tri { border-radius: 4px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); padding-top: 22%; }
 
-/* Цвета добавляются ТОЛЬКО после выяснения всех свойств (в финале) или явного перекрашивания */
+/* Идеальный треугольник без искажений */
+.shape-base.tri { 
+  border-radius: 0; 
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%); 
+  padding-top: 0; /* Убрали padding, чтобы не сжимало */
+  /* Смещаем текст вниз только визуально, не ломая фигуру */
+  align-items: flex-end;
+  padding-bottom: 8px;
+}
+
+/* Цвета */
 .shape-base.vowel   { background: var(--vowel); color: #fff; border-color: transparent; }
 .shape-base.voiced  { background: var(--voiced); color: #fff; border-color: transparent; }
 .shape-base.deaf    { background: var(--deaf); color: #fff; border-color: transparent; }
 .shape-base.soft    { background: var(--soft); color: #fff; border-color: transparent; }
 .shape-base.hard    { background: var(--hard); color: #fff; border-color: transparent; }
 
+/* Инлайн фигуры в тексте */
 .shape-base.inline { width: 1.6em; height: 1.6em; font-size: inherit; border-width: 2px; box-shadow: none; vertical-align: middle; margin: 0 .15em; display: inline-flex; }
-.shape-base.inline.tri { padding-top: 18%; }
+.shape-base.inline.tri { padding-bottom: 2px; }
 
+/* Бейдж-пара (сверху фигуры) */
 .shape-badge {
   position: absolute; top: -14px; right: -14px; width: 38px; height: 38px;
   display: flex; align-items: center; justify-content: center;
@@ -159,7 +171,6 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
 }
 .shape-badge.soft { background: var(--soft); color: #fff; }
 .shape-badge.hard { background: var(--hard); color: #fff; }
-
 @keyframes popIn { 0%{transform:scale(0); opacity:0;} 60%{transform:scale(1.2); opacity:1;} 100%{transform:scale(1);} }
 
 .floating-shape {
@@ -184,7 +195,7 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
 
 .final-letter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 0 auto; position: relative; width: fit-content; }
 .final-letter .big { width: 108px; height: 108px; font-size: 2.8rem; margin: 0; }
-.final-letter .big.tri { padding-top: 22%; }
+.final-letter .big.tri { padding-bottom: 12px; }
 
 .final-letter .pair-small {
   width: 42px; height: 42px; font-size: 1.1rem; font-weight: 900; color: #fff;
@@ -192,13 +203,12 @@ p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
   border-radius: 50%; animation: popIn .5s; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.2);
 }
 .final-letter .pair-small.sq { border-radius: 12px; }
-.final-letter .pair-small.tri { border-radius: 4px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); padding-top: 16%; }
+.final-letter .pair-small.tri { border-radius: 4px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); padding-bottom: 6px; }
 
 @media (max-width: 480px) {
   .screen { padding: 28px 20px 24px; border-radius: 18px; }
   .floating-shape { width: 64px; height: 64px; font-size: 1.6rem; top: 12px; right: 12px; }
   .shape-base { width: 80px; height: 80px; font-size: 2.1rem; }
-  .shape-base.tri { padding-top: 22%; }
   .letter-input { font-size: 2.1rem; }
   .btn { font-size: 1rem; padding: 14px 18px; }
   #app { padding-bottom: 140px; align-items: flex-start; padding-top: 84px; }
