@@ -29,13 +29,13 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// Генератор фигур. По умолчанию БЕЛАЯ. Цвет и форма задаются отдельно.
+// Генератор фигур
 function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', isVowel = null, voiced = null, soft = null } = {}) {
   let classes = ['shape-base'];
   let badgeHtml = '';
 
   if (forceWhite || (isVowel === null && voiced === null && soft === null)) {
-    // Белый
+    // Белый (без цвета)
   } else {
     if (isVowel) classes.push('vowel');
     else if (voiced !== null) {
@@ -259,13 +259,13 @@ function screenVoiceQuestion() {
   return wrap;
 }
 
-// ВАЖНО: здесь мы НЕ красим фигуру в цвета, оставляем белой, меняем только ФОРМУ
+// Экран результата: меняем форму, но НЕ цвет
 function screenVoiceResult(isVoiced) {
   const word = isVoiced ? 'звонкая' : 'глухая';
   const wrap = el(`
     <div class="screen-inner center">
       <div class="shape-base ${isVoiced ? 'tri' : 'sq'} flash">${esc(state.letter)}</div>
-      <h1>${makeShape(state.letter, { size: 'inline', forceWhite: true })} — ${word}!</h1>
+      <h1>${makeShape(state.letter, { size: 'inline', voiced: isVoiced, soft: state.soft })} — ${word}!</h1>
       <h2>${isVoiced ? 'Голосовые связки вибрируют. Форма стала треугольной.' : 'Голосовые связки не вибрируют. Форма стала квадратной.'}</h2>
       <button class="btn" id="next">Дальше →</button>
     </div>
@@ -278,7 +278,6 @@ function screenVoicePairQuestion() {
   const correctPaired = Boolean(VOICE_PAIRS[state.letter]);
   const pairLetter = VOICE_PAIRS[state.letter] || '';
 
-  // Убрали серую надпись "Например..." из h2
   const wrap = el(`
     <div class="screen-inner center">
       <div class="shape-base ${state.voiced ? 'tri' : 'sq'}">${esc(state.letter)}</div>
@@ -295,9 +294,7 @@ function screenVoicePairQuestion() {
   return wrap;
 }
 
-// Логика проверки мягкости
 function screenSoftnessLogic() {
-  // Если буква непарная по мягкости/твёрдости — показываем объяснение
   if (UNPAIRED_SOFT.has(state.letter) || UNPAIRED_HARD.has(state.letter)) {
     state.soft = UNPAIRED_SOFT.has(state.letter);
     state.pairedSoft = false;
@@ -305,13 +302,11 @@ function screenSoftnessLogic() {
     screens[7] = screenUnpairedInfo;
     return screenUnpairedInfo();
   }
-  // Иначе идём по вопросам
   return screenSoftnessQuestion();
 }
 
 function screenUnpairedInfo() {
   const word = state.soft ? 'мягкая' : 'твёрдая';
-  const colorCls = state.soft ? 'soft' : 'hard';
   const shapeCls = state.voiced ? 'tri' : 'sq';
 
   const wrap = el(`
