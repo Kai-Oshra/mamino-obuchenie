@@ -28,32 +28,34 @@ function esc(s) {
 }
 
 /**
- * Универсальный генератор фигур.
- * Форма определяется параметром voiced (если не null).
- * Цвет — параметрами isVowel, soft. Если не переданы, фигура белая.
+ * Генератор фигур.
+ * @param {Object} opts 
+ * @param {string} opts.size - 'normal', 'big', 'inline'
+ * @param {string} opts.badge - буква-пара (для финала)
+ * @param {boolean} opts.isVowel - если true, фигура краснеет (гласная)
+ * @param {boolean} opts.voiced - определяет ФОРМУ. true = треугольник (звонкая), false = квадрат (глухая).
+ * @param {boolean} opts.soft - определяет ЦВЕТ (зеленый/синий). Если null, фигура остается БЕЛОЙ с ЧЕРНОЙ обводкой.
  */
 function makeShape(letter, { size = 'normal', badge = '', isVowel = null, voiced = null, soft = null } = {}) {
   let classes = ['shape-base'];
   let badgeHtml = '';
 
-  // 1. Определяем ФОРМУ
+  // 1. Форма
   if (voiced === true) classes.push('tri');
   else if (voiced === false) classes.push('sq');
 
-  // 2. Определяем ЦВЕТ (только если явно задан)
+  // 2. Цвет (только если знаем мягкость или это гласная)
   if (isVowel === true) {
     classes.push('vowel');
-  } else if (voiced !== null) {
-    if (soft === true) classes.push('soft');
-    else if (soft === false) classes.push('hard');
-    else classes.push(voiced ? 'voiced' : 'deaf'); // На этапе вопросов о парности/мягкости
+  } else if (soft !== null) {
+    classes.push(soft ? 'soft' : 'hard');
   }
 
   if (size === 'big') classes.push('big');
   if (size === 'inline') classes.push('inline');
 
   if (badge) {
-    const badgeClass = soft !== null ? (soft ? 'hard' : 'soft') : (voiced ? 'deaf' : 'voiced');
+    const badgeClass = soft !== null ? (soft ? 'hard' : 'soft') : 'voiced';
     badgeHtml = `<span class="shape-badge ${badgeClass}">${esc(badge)}</span>`;
   }
 
@@ -247,7 +249,7 @@ function screenVoiceQuestion() {
 
 function screenVoiceResult(isVoiced) {
   const word = isVoiced ? 'звонкая' : 'глухая';
-  // Передаем voiced, но НЕ передаем soft. Значит, форма будет (треугольник/квадрат), но цвет останется белым, так как soft === null
+  // Передаем voiced, НО НЕ передаем soft. Форма изменится, цвет останется белым.
   const wrap = el(`
     <div class="screen-inner center">
       ${makeShape(state.letter, { size: 'big', voiced: isVoiced })}
@@ -351,7 +353,7 @@ function screenSoftnessResult() {
   const word = state.soft ? 'мягкая' : 'твёрдая';
   screens[8] = screenFinal;
 
-  // Теперь мы наконец-то передаем soft, и фигура окрашивается в зеленый/синий
+  // Передаем soft. Фигура наконец-то окрашивается.
   const wrap = el(`
     <div class="screen-inner center">
       ${makeShape(state.letter, { size: 'big', voiced: state.voiced, soft: state.soft })}
