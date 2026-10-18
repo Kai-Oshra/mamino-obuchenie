@@ -1,5 +1,5 @@
 /* =========================================================
-   Фонетический разбор — интерактивный тренажёр для ребёнка
+   Фонетический разбор
    ========================================================= */
 
 const VOWELS = new Set(['а','о','у','ы','э','и','е','ё','ю','я']);
@@ -53,7 +53,7 @@ function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', is
   let badgeHtml = '';
 
   if (forceWhite || (isVowel === null && voiced === null)) {
-    // Белый
+    // Белый круг
   } else {
     if (isVowel) {
       classes.push('vowel');
@@ -115,7 +115,11 @@ function render() {
   screenEl.innerHTML = '';
   if (currentIndex < 0) currentIndex = 0;
   if (currentIndex >= screens.length) currentIndex = screens.length - 1;
-  screenEl.appendChild(screens[currentIndex]());
+  
+  const content = screens[currentIndex]();
+  if (content) {
+    screenEl.appendChild(content);
+  }
   setFloatingShape();
 }
 
@@ -369,20 +373,20 @@ function screenVoicePairQuestion() {
   return wrap;
 }
 
-// Исправленная логика мягкости (без return null)
+// Исправленная логика мягкости
 function screenSoftnessLogic() {
+  // Если непарная — сразу в финал
   if (UNPAIRED_SOFT.has(state.letter) || UNPAIRED_HARD.has(state.letter)) {
     state.soft = UNPAIRED_SOFT.has(state.letter);
     state.pairedSoft = false;
     state.pairSoftLetter = '';
     
-    // Чтобы анимация перехода сработала корректно, возвращаем пустой div,
-    // а в nextTick перекидываем на финальный экран.
-    setTimeout(() => {
-      currentIndex = 8; // Индекс финального экрана
-      render();
-    }, 10);
-    return el('<div></div>'); 
+    // Перекидываем на финальный экран
+    const finalNode = screenFinal();
+    // Вставляем напрямую в DOM
+    screenEl.innerHTML = '';
+    screenEl.appendChild(finalNode);
+    return null; // Render не будет добавлять пустоту, т.к. мы уже добавили сами
   }
 
   return screenSoftnessQuestion();
