@@ -1,255 +1,429 @@
-:root {
-  --bg: #f5f7ff;
-  --bg-alt: #ffffff;
-  --text: #1f2a44;
-  --muted: #6b7a99;
-  --accent: #5b8def;
-  --accent-dark: #3f6fd8;
-  --ok: #2fc18c;
-  --warn: #ff8a5b;
-  --vowel: #ff6b9a;
-  --consonant: #5b8def;
-  --voiced: #7a5cff;
-  --deaf: #7f8ca6;
-  --soft: #2fc18c;
-  --hard: #5b8def;
-  --shadow: 0 12px 30px rgba(31, 42, 68, 0.12);
-  --radius: 22px;
+/* =========================================================
+   Фонетический разбор
+   ========================================================= */
+
+const VOWELS = new Set(['а','о','у','ы','э','и','е','ё','ю','я']);
+const VOICE_PAIRS = { 'б':'п','в':'ф','г':'к','д':'т','ж':'ш','з':'с','п':'б','ф':'в','к':'г','т':'д','ш':'ж','с':'з' };
+const SOFT_PAIRABLE = new Set(['б','в','г','д','з','к','л','м','н','п','р','с','т','ф','х']);
+const UNPAIRED_SOFT = new Set(['ч','щ','й']);
+const UNPAIRED_HARD = new Set(['ж','ш','ц']);
+const SOFTENING = ['е','ё','и','ю','я','ь'];
+
+const state = {
+  letter: '', isVowel: null, voiced: null, pairedVoice: null, pairVoiceLetter: '',
+  soft: null, pairedSoft: null, pairSoftLetter: '', softStep: 0, stress: undefined,
+};
+
+const screens = [];
+let currentIndex = -1;
+const screenEl = document.getElementById('screen');
+
+function el(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+// Генератор фигур. Всегда БЕЛАЯ с чёрной обводкой, если не передан цвет.
+function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', isVowel = null, voiced = null, soft = null } = {}) {
+  let classes = ['shape-base'];
+  let badgeHtml = '';
 
-html, body {
-  margin: 0; padding: 0; height: 100%;
-  font-family: 'Nunito', system-ui, -apple-system, sans-serif;
-  background: radial-gradient(1200px 800px at 20% 0%, #e8eeff 0%, var(--bg) 60%);
-  color: var(--text);
-  overflow-x: hidden;
+  // Если цвета не переданы — оставляем белой
+  if (!forceWhite && (isVowel !== null || voiced !== null || soft !== null)) {
+    if (isVowel) classes.push('vowel');
+    else if (voiced !== null) {
+      classes.push(voiced ? 'tri' : 'sq');
+      if (soft === true) classes.push('soft');
+      else if (soft === false) classes.push('hard');
+      else classes.push(voiced ? 'voiced' : 'deaf');
+    }
+  } else {
+    // Принудительно белая, но форма может быть (для вопросов до цвета)
+    if (voiced === true) classes.push('tri');
+    if (voiced === false) classes.push('sq');
+  }
+
+  if (size === 'big') classes.push('big');
+  if (size === 'inline') classes.push('inline');
+
+  if (badge) {
+    const badgeClass = soft !== null ? (soft ? 'hard' : 'soft') : (voiced ? 'deaf' : 'voiced');
+    badgeHtml = `<span class="shape-badge ${badgeClass}">${esc(badge)}</span>`;
+  }
+
+  return `<span class="${classes.join(' ')}"><span>${esc(letter)}</span>${badgeHtml}</span>`;
 }
 
-#app {
-  min-height: 100vh;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px 16px 120px;
-  position: relative;
+function goTo(newIndex, direction = 'forward') {
+  const oldScreen = screenEl.firstElementChild;
+  const finish = () => { currentIndex = newIndex; render(); };
+  if (!oldScreen) { finish(); return; }
+
+  oldScreen.classList.add(direction === 'forward' ? 'slide-out-left' : 'slide-out-right');
+  setTimeout(() => {
+    finish();
+    const ns = screenEl.firstElementChild;
+    if (ns) ns.classList.add(direction === 'forward' ? 'slide-in-right' : 'slide-in-left');
+  }, 380);
+}
+function next() { goTo(currentIndex + 1, 'forward'); }
+
+function render() {
+  screenEl.innerHTML = '';
+  if (currentIndex < 0) currentIndex = 0;
+  if (currentIndex >= screens.length) currentIndex = screens.length - 1;
+  const content = screens[currentIndex]();
+  if (content) screenEl.appendChild(content);
 }
 
-.screen {
-  width: min(640px, 100%);
-  background: var(--bg-alt);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 40px 32px 32px;
-  position: relative;
-  overflow: hidden;
-  animation: screenIn 0.5s cubic-bezier(.22,1,.36,1);
+function resetState() {
+  state.letter = ''; state.isVowel = null; state.voiced = null; state.pairedVoice = null; state.pairVoiceLetter = '';
+  state.soft = null; state.pairedSoft = null; state.pairSoftLetter = ''; state.softStep = 0; state.stress = undefined;
 }
 
-.screen.slide-out-left  { animation: slideOutLeft 0.42s cubic-bezier(.6,0,.4,1) forwards; }
-.screen.slide-in-right  { animation: slideInRight 0.5s cubic-bezier(.22,1,.36,1); }
-.screen.slide-out-right { animation: slideOutRight 0.42s cubic-bezier(.6,0,.4,1) forwards; }
-.screen.slide-in-left   { animation: slideInLeft 0.5s cubic-bezier(.22,1,.36,1); }
+function bindYesNo(wrap, { onCorrect, correctIsYes, hintWrong }) {
+  const yesBtn = wrap.querySelector('#yes');
+  const noBtn  = wrap.querySelector('#no');
+  const hint   = wrap.querySelector('#hint');
 
-@keyframes screenIn     { from { opacity:0; transform: translateY(20px) scale(.98); } to { opacity:1; transform: translateY(0) scale(1); } }
-@keyframes slideOutLeft { to { opacity:0; transform: translateX(-80px) rotate(-2deg); } }
-@keyframes slideInRight { from { opacity:0; transform: translateX(80px) rotate(2deg); } to { opacity:1; transform: translateX(0) rotate(0); } }
-@keyframes slideOutRight{ to { opacity:0; transform: translateX(80px) rotate(2deg); } }
-@keyframes slideInLeft  { from { opacity:0; transform: translateX(-80px) rotate(-2deg); } to { opacity:1; transform: translateX(0) rotate(0); } }
-
-h1 { font-size: clamp(1.4rem, 3.4vw, 1.8rem); font-weight: 900; margin: 0 0 8px; line-height: 1.25; animation: fadeUp .5s .05s both; }
-h2 { font-size: clamp(1.15rem, 2.6vw, 1.4rem); font-weight: 700; margin: 0 0 20px; color: var(--muted); animation: fadeUp .5s .1s both; }
-p  { font-size: 1.05rem; line-height: 1.5; animation: fadeUp .5s .15s both; }
-.eyebrow { display: inline-block; font-size: .8rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; animation: fadeUp .5s both; }
-@keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
-
-.letter-input {
-  width: 100%; font-family: 'Nunito', sans-serif; font-size: 2.6rem; font-weight: 900;
-  text-align: center; text-transform: lowercase; padding: 18px 14px;
-  border: 3px dashed #cfd8ef; border-radius: 18px; background: #f8faff; color: var(--text);
-  outline: none; transition: border-color .25s, box-shadow .25s, background .25s;
-  animation: fadeUp .5s .2s both;
-}
-.letter-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 6px rgba(91,141,239,.14); }
-.letter-input::placeholder { color: #c3cde4; font-weight: 700; }
-
-.btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 100%; padding: 16px 22px; margin-top: 14px;
-  font-family: 'Nunito', sans-serif; font-size: 1.05rem; font-weight: 800;
-  letter-spacing: .02em; border: none; border-radius: 16px; cursor: pointer;
-  color: #fff; background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
-  box-shadow: 0 8px 20px rgba(91,141,239,.35);
-  transition: transform .18s ease, box-shadow .18s ease, opacity .2s, filter .2s, background .3s;
-  animation: fadeUp .5s .25s both;
-}
-.btn:hover:not(:disabled)  { transform: translateY(-2px) scale(1.01); box-shadow: 0 12px 26px rgba(91,141,239,.45); }
-.btn:active:not(:disabled) { transform: translateY(0) scale(.99); }
-.btn:disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.35); box-shadow: none; }
-
-.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 26px; }
-.btn-yes { background: linear-gradient(135deg, #2fc18c 0%, #23a577 100%); box-shadow: 0 8px 20px rgba(47,193,140,.35); }
-.btn-yes:hover:not(:disabled) { box-shadow: 0 12px 26px rgba(47,193,140,.5); }
-.btn-no  { background: linear-gradient(135deg, #ff8a5b 0%, #e56c3d 100%); box-shadow: 0 8px 20px rgba(255,138,91,.35); }
-.btn-no:hover:not(:disabled)  { box-shadow: 0 12px 26px rgba(255,138,91,.5); }
-
-.btn.wrong {
-  background: linear-gradient(135deg, #ff5e5e 0%, #e03b3b 100%) !important;
-  box-shadow: 0 0 0 6px rgba(255,94,94,.22), 0 8px 20px rgba(224,59,59,.4) !important;
-  animation: shake .5s cubic-bezier(.36,.07,.19,.97);
-}
-.btn.wrong::after { content: " ✕"; font-weight: 900; }
-.btn.correct {
-  background: linear-gradient(135deg, #2fc18c 0%, #199a6b 100%) !important;
-  box-shadow: 0 0 0 6px rgba(47,193,140,.25), 0 8px 20px rgba(47,193,140,.5) !important;
-  animation: pop .4s;
-}
-.btn.correct::after { content: " ✓"; font-weight: 900; }
-.btn.pulse-hint { animation: pulseHint 1.4s ease-in-out infinite; }
-
-@keyframes shake { 10%,90%{transform:translateX(-2px);} 20%,80%{transform:translateX(4px);} 30%,50%,70%{transform:translateX(-7px);} 40%,60%{transform:translateX(7px);} }
-@keyframes pop   { 0%{transform:scale(1);} 40%{transform:scale(1.06);} 100%{transform:scale(1);} }
-@keyframes pulseHint { 0%,100%{box-shadow:0 0 0 0 rgba(47,193,140,.5);} 50%{box-shadow:0 0 0 12px rgba(47,193,140,0);} }
-
-.hint-text {
-  display: none;
-  margin-top: 18px; padding: 12px 16px;
-  background: #fff4e6; border-left: 4px solid #ff8a5b; border-radius: 12px;
-  font-size: .95rem; color: #7a4a22; font-weight: 700; text-align: left;
-}
-.hint-text.show { display: block; animation: fadeUp .35s ease both; }
-.hint-text.ok { background: #e9fbf3; border-left-color: var(--ok); color: #1d6b50; }
-
-/* =========================================
-   ФИГУРЫ (Идеальный рендер)
-   ========================================= */
-.shape-base {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 96px; height: 96px; font-weight: 900; font-size: 2.6rem;
-  color: var(--text); background: #ffffff; border: 3px solid var(--text);
-  box-shadow: 0 8px 20px rgba(31,42,68,.14); border-radius: 50%;
-  flex-shrink: 0; position: relative; margin: 0 auto;
-  line-height: 1;
-  transition: border-radius .5s cubic-bezier(.68,-0.55,.27,1.55), background .45s ease, color .35s ease, border-color .35s ease, transform .3s;
+  function handle(chosenYes) {
+    const isCorrect = chosenYes === correctIsYes;
+    if (isCorrect) {
+      (chosenYes ? yesBtn : noBtn).classList.add('correct');
+      (chosenYes ? yesBtn : noBtn).classList.remove('wrong');
+      yesBtn.disabled = true; noBtn.disabled = true;
+      if (hint) { hint.textContent = 'Верно! 🎉'; hint.classList.add('show', 'ok'); }
+      setTimeout(() => onCorrect(), 700);
+    } else {
+      (chosenYes ? yesBtn : noBtn).classList.add('wrong');
+      (chosenYes ? yesBtn : noBtn).classList.remove('correct');
+      if (hint) { hint.textContent = hintWrong || 'Попробуй ещё раз.'; hint.classList.add('show'); hint.classList.remove('ok'); }
+      const rightBtn = correctIsYes ? yesBtn : noBtn;
+      rightBtn.classList.add('pulse-hint');
+      setTimeout(() => rightBtn.classList.remove('pulse-hint'), 2400);
+      setTimeout(() => (chosenYes ? yesBtn : noBtn).classList.remove('wrong'), 900);
+    }
+  }
+  yesBtn.addEventListener('click', () => handle(true));
+  noBtn.addEventListener('click', () => handle(false));
 }
 
-.shape-base.flash { animation: shapeFlash 0.8s ease-out; }
-@keyframes shapeFlash {
-  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,0.8); }
-  30%  { transform: scale(1.15); box-shadow: 0 0 0 24px rgba(255,255,255,0.4); }
-  100% { transform: scale(1); box-shadow: 0 8px 20px rgba(31,42,68,.2); }
+function screenLetterInput() {
+  const wrap = el(`
+    <div class="screen-inner">
+      <span class="eyebrow">Шаг 1</span>
+      <h1>Какая у вас буква?</h1>
+      <h2>Введите ровно одну букву</h2>
+      <input id="letter" class="letter-input" type="text" inputmode="text" maxlength="1" autocomplete="off" spellcheck="false" placeholder="?" />
+      <button id="next" class="btn" disabled>Перейти к вопросам →</button>
+    </div>
+  `);
+  const input = wrap.querySelector('#letter');
+  const btn   = wrap.querySelector('#next');
+
+  input.addEventListener('input', () => {
+    let v = input.value.replace(/[^a-zA-Zа-яА-ЯёЁ]/g, '').toLowerCase();
+    if (v.length > 1) v = v[0];
+    v = mapLatinToCyrillic(v);
+    input.value = v;
+    btn.disabled = v.length !== 1;
+  });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !btn.disabled) btn.click(); });
+  btn.addEventListener('click', () => {
+    const v = mapLatinToCyrillic((input.value || '').toLowerCase().trim());
+    if (v.length !== 1) return;
+    resetState(); state.letter = v; next();
+  });
+  setTimeout(() => input.focus(), 60);
+  return wrap;
 }
 
-.shape-base.sq { border-radius: 18px; }
-
-/* Идеальный треугольник через ::before (не режет контент) */
-.shape-base.tri {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.shape-base.tri::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: inherit;
-  border: inherit;
-  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-  z-index: -1;
-  transition: background .45s ease, border-color .35s ease;
-}
-/* Возвращаем цвета для треугольника через ::before */
-.shape-base.tri.vowel::before   { background: var(--vowel); }
-.shape-base.tri.voiced::before  { background: var(--voiced); }
-.shape-base.tri.deaf::before    { background: var(--deaf); }
-.shape-base.tri.soft::before    { background: var(--soft); }
-.shape-base.tri.hard::before    { background: var(--hard); }
-
-/* Смещаем букву вниз для визуального центра треугольника */
-.shape-base.tri span, .shape-base.tri {
-  align-items: flex-end;
-  padding-bottom: 8px;
+function mapLatinToCyrillic(ch) {
+  const map = { a:'а', b:'б', c:'ц', d:'д', e:'е', f:'ф', g:'г', h:'х', i:'и', j:'й', k:'к', l:'л', m:'м', n:'н', o:'о', p:'п', q:'к', r:'р', s:'с', t:'т', u:'у', v:'в', w:'в', x:'х', y:'у', z:'з' };
+  return map[ch] || ch;
 }
 
-/* Цвета */
-.shape-base.vowel   { background: var(--vowel); color: #fff; border-color: transparent; }
-.shape-base.voiced  { background: var(--voiced); color: #fff; border-color: transparent; }
-.shape-base.deaf    { background: var(--deaf); color: #fff; border-color: transparent; }
-.shape-base.soft    { background: var(--soft); color: #fff; border-color: transparent; }
-.shape-base.hard    { background: var(--hard); color: #fff; border-color: transparent; }
-
-/* Инлайн фигуры в тексте */
-.shape-base.inline { width: 1.6em; height: 1.6em; font-size: inherit; border-width: 2px; box-shadow: none; vertical-align: middle; margin: 0 .15em; display: inline-flex; }
-.shape-base.inline.tri { padding-bottom: 2px; }
-
-/* Бейдж-пара (сверху фигуры) */
-.shape-badge {
-  position: absolute; top: -14px; right: -14px; width: 38px; height: 38px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1rem; font-weight: 900; border-radius: 50%; border: 3px solid #fff;
-  box-shadow: 0 4px 12px rgba(0,0,0,.2); animation: popIn .5s cubic-bezier(.68,-0.55,.27,1.55); z-index: 10;
+function screenOpenMouthQuestion() {
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base">${esc(state.letter)}</div>
+      <h1>Ваша буква ${makeShape(state.letter, { size: 'inline', forceWhite: true })} может быть сказана с открытым ртом, без использования языка?</h1>
+      <h2>Попробуйте произнести её и почувствуйте</h2>
+      <div class="btn-row"><button class="btn btn-yes" id="yes">Да</button><button class="btn btn-no" id="no">Нет</button></div>
+      <div id="hint" class="hint-text"></div>
+    </div>
+  `);
+  const correct = VOWELS.has(state.letter);
+  bindYesNo(wrap, {
+    correctIsYes: correct,
+    hintWrong: correct ? 'Гласную можно пропеть с открытым ртом, язык не мешает.' : 'Язык или губы создают преграду — значит, буква согласная.',
+    onCorrect: () => { state.isVowel = correct; screens[2] = correct ? screenVowelInfo : screenConsonantInfo; next(); }
+  });
+  return wrap;
 }
-.shape-badge.soft { background: var(--soft); color: #fff; }
-.shape-badge.hard { background: var(--hard); color: #fff; }
-@keyframes popIn { 0%{transform:scale(0); opacity:0;} 60%{transform:scale(1.2); opacity:1;} 100%{transform:scale(1);} }
 
-.floating-shape {
-  position: fixed; top: 20px; right: 20px; width: 82px; height: 82px; font-size: 2rem; z-index: 50;
-  transition: border-radius .55s cubic-bezier(.68,-0.55,.27,1.55), background .5s ease, transform .4s ease;
+function screenVowelInfo() {
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base vowel flash"><span>${esc(state.letter)}</span></div>
+      <h1>Ваша буква гласная! 🎉</h1>
+      <h2>Она тянется, не встречает преграды</h2>
+      <button class="btn" id="next">Дальше →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => { screens[3] = screenStressQuestion; next(); });
+  return wrap;
 }
-.floating-shape.hidden { opacity: 0; transform: scale(.4) translateY(-14px); pointer-events: none; }
-.floating-shape.tri {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
+
+function screenConsonantInfo() {
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base flash"><span>${esc(state.letter)}</span></div>
+      <h1>Ваша буква согласная!</h1>
+      <h2>Она встречает преграду при произношении</h2>
+      <button class="btn" id="next">Дальше →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => { screens[3] = screenVoiceQuestion; next(); });
+  return wrap;
 }
-.floating-shape.tri::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: inherit;
-  border: inherit;
-  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
-  z-index: -1;
+
+function screenStressQuestion() {
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base vowel"><span>${esc(state.letter)}</span></div>
+      <h1>Позовите разбираемое слово — ${makeShape(state.letter, { size: 'inline', isVowel: true })} тянется?</h1>
+      <h2>Ударная гласная звучит дольше и сильнее</h2>
+      <div class="btn-row"><button class="btn btn-yes" id="yes">Да, тянется</button><button class="btn btn-no" id="no">Нет</button></div>
+      <div id="hint" class="hint-text"></div>
+    </div>
+  `);
+  wrap.querySelector('#yes').addEventListener('click', () => { state.stress = 'ударная'; screens[4] = () => screenVowelResult(true); next(); });
+  wrap.querySelector('#no').addEventListener('click', () => { state.stress = 'безударная'; screens[4] = () => screenVowelResult(false); next(); });
+  return wrap;
 }
-.floating-shape.tri.vowel::before   { background: var(--vowel); }
-.floating-shape.tri.voiced::before  { background: var(--voiced); }
-.floating-shape.tri.deaf::before    { background: var(--deaf); }
-.floating-shape.tri.soft::before    { background: var(--soft); }
-.floating-shape.tri.hard::before    { background: var(--hard); }
 
-.summary { margin-top: 22px; display: grid; gap: 10px; animation: fadeUp .5s .2s both; }
-.summary-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #f4f7ff; border-radius: 14px; font-weight: 700; }
-.summary-row .k { color: var(--muted); }
-.summary-row .v { color: var(--text); font-weight: 900; }
-.summary-row .v.vowel { color: var(--vowel); }
-.summary-row .v.voiced { color: var(--voiced); }
-.summary-row .v.deaf { color: var(--deaf); }
-.summary-row .v.soft { color: var(--soft); }
-.summary-row .v.hard { color: var(--hard); }
-.summary-row .v.paired { color: var(--accent); }
-.summary-row .v.unpaired { color: var(--muted); }
-
-.center { text-align: center; }
-
-.final-letter { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 0 auto; position: relative; width: fit-content; }
-.final-letter .big { width: 108px; height: 108px; font-size: 2.8rem; margin: 0; }
-.final-letter .big.tri { padding-bottom: 12px; }
-
-.final-letter .pair-small {
-  width: 42px; height: 42px; font-size: 1.1rem; font-weight: 900; color: #fff;
-  display: flex; align-items: center; justify-content: center; background: #1f2a44;
-  border-radius: 50%; animation: popIn .5s; border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,.2);
+function screenVowelResult(isStressed) {
+  const word = isStressed ? 'ударная' : 'безударная';
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base vowel"><span>${esc(state.letter)}</span></div>
+      <h1>${makeShape(state.letter, { size: 'inline', isVowel: true })} ${word}!</h1>
+      <div class="summary">
+        <div class="summary-row"><span class="k">Тип</span><span class="v vowel">Гласная</span></div>
+        <div class="summary-row"><span class="k">Ударение</span><span class="v">${word}</span></div>
+      </div>
+      <button class="btn" id="restart">Перейти к следующей букве ↺</button>
+    </div>
+  `);
+  wrap.querySelector('#restart').addEventListener('click', () => { resetState(); goTo(0, 'back'); });
+  return wrap;
 }
-.final-letter .pair-small.sq { border-radius: 12px; }
-.final-letter .pair-small.tri { border-radius: 4px; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); padding-bottom: 6px; }
 
-@media (max-width: 480px) {
-  .screen { padding: 28px 20px 24px; border-radius: 18px; }
-  .floating-shape { width: 64px; height: 64px; font-size: 1.6rem; top: 12px; right: 12px; }
-  .shape-base { width: 80px; height: 80px; font-size: 2.1rem; }
-  .letter-input { font-size: 2.1rem; }
-  .btn { font-size: 1rem; padding: 14px 18px; }
-  #app { padding-bottom: 140px; align-items: flex-start; padding-top: 84px; }
-  .final-letter .big { width: 92px; height: 92px; font-size: 2.3rem; }
-  .shape-badge { width: 32px; height: 32px; font-size: .85rem; top: -10px; right: -10px; }
+function screenVoiceQuestion() {
+  const isVoicedCorrect = !['п','ф','к','т','ш','с','х','ц','ч','щ'].includes(state.letter);
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base"><span>${esc(state.letter)}</span></div>
+      <h1>Произнося ${makeShape(state.letter, { size: 'inline', forceWhite: true })}, приложите руку к горлу. Чувствуете вибрацию?</h1>
+      <h2>Если да — буква звонкая, если нет — глухая</h2>
+      <div class="btn-row"><button class="btn btn-yes" id="yes">Да</button><button class="btn btn-no" id="no">Нет</button></div>
+      <div id="hint" class="hint-text"></div>
+    </div>
+  `);
+  bindYesNo(wrap, {
+    correctIsYes: isVoicedCorrect,
+    hintWrong: isVoicedCorrect ? 'Приложите руку к горлу и произнесите букву с голосом — должна быть вибрация.' : 'Горло не вибрирует — звук глухой, голосовые связки не работают.',
+    onCorrect: () => { state.voiced = isVoicedCorrect; screens[4] = () => screenVoiceResult(isVoicedCorrect); next(); }
+  });
+  return wrap;
 }
+
+// Меняем ТОЛЬКО ФОРМУ, без цвета
+function screenVoiceResult(isVoiced) {
+  const word = isVoiced ? 'звонкая' : 'глухая';
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base ${isVoiced ? 'tri' : 'sq'} flash"><span>${esc(state.letter)}</span></div>
+      <h1>${makeShape(state.letter, { size: 'inline', voiced: isVoiced, forceWhite: true })} — ${word}!</h1>
+      <h2>${isVoiced ? 'Голосовые связки вибрируют. Форма стала треугольной.' : 'Голосовые связки не вибрируют. Форма стала квадратной.'}</h2>
+      <button class="btn" id="next">Дальше →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => { screens[5] = screenVoicePairQuestion; next(); });
+  return wrap;
+}
+
+function screenVoicePairQuestion() {
+  const correctPaired = Boolean(VOICE_PAIRS[state.letter]);
+  const pairLetter = VOICE_PAIRS[state.letter] || '';
+
+  // Без серой надписи
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base ${state.voiced ? 'tri' : 'sq'}"><span>${esc(state.letter)}</span></div>
+      <h1>Есть ли у буквы ${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} пара по звонкости/глухости?</h1>
+      <div class="btn-row"><button class="btn btn-yes" id="yes">Да, есть</button><button class="btn btn-no" id="no">Нет, непарная</button></div>
+      <div id="hint" class="hint-text"></div>
+    </div>
+  `);
+  bindYesNo(wrap, {
+    correctIsYes: correctPaired,
+    hintWrong: correctPaired ? `У этой буквы есть пара: «${pairLetter}».` : 'Эта буква не имеет пары по звонкости — она непарная.',
+    onCorrect: () => { state.pairedVoice = correctPaired; state.pairVoiceLetter = correctPaired ? pairLetter : ''; screens[6] = screenSoftnessLogic; next(); }
+  });
+  return wrap;
+}
+
+function screenSoftnessLogic() {
+  if (UNPAIRED_SOFT.has(state.letter) || UNPAIRED_HARD.has(state.letter)) {
+    state.soft = UNPAIRED_SOFT.has(state.letter);
+    state.pairedSoft = false;
+    state.pairSoftLetter = '';
+    screens[7] = screenUnpairedInfo;
+    return screenUnpairedInfo();
+  }
+  return screenSoftnessQuestion();
+}
+
+function screenUnpairedInfo() {
+  const word = state.soft ? 'мягкая' : 'твёрдая';
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base ${state.voiced ? 'tri' : 'sq'} flash"><span>${esc(state.letter)}</span></div>
+      <h1>${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} — всегда ${word}!</h1>
+      <h2>У неё нет пары по твёрдости/мягкости.</h2>
+      <button class="btn" id="next">Узнать итог →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => { screens[8] = screenFinal; next(); });
+  return wrap;
+}
+
+const SOFT_QUESTION_SEQUENCE = ['е','ё','и','ю','я','ь','а','о','у','ы','э'];
+
+function screenSoftnessQuestion() {
+  if (state.soft !== null) return screenSoftnessResult();
+
+  const ch = SOFT_QUESTION_SEQUENCE[state.softStep];
+  if (!ch) { state.soft = false; return screenSoftnessResult(); }
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base ${state.voiced ? 'tri' : 'sq'}"><span>${esc(state.letter)}</span></div>
+      <h1>После вашей ${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} в слове есть буква «${esc(ch)}»?</h1>
+      <h2>${ch === 'ь' ? 'Мягкий знак делает предыдущий согласный мягким.' : 'Проверяем, смягчает ли она ваш согласный'}</h2>
+      <div class="btn-row"><button class="btn btn-yes" id="yes">Да, есть</button><button class="btn btn-no" id="no">Нет</button></div>
+      <div id="hint" class="hint-text"></div>
+    </div>
+  `);
+  wrap.querySelector('#yes').addEventListener('click', () => {
+    if (SOFTENING.includes(ch)) state.soft = true;
+    else state.soft = false;
+    screens[7] = screenSoftnessResult;
+    next();
+  });
+  wrap.querySelector('#no').addEventListener('click', () => {
+    state.softStep += 1;
+    const newNode = screenSoftnessQuestion();
+    if (newNode) { screenEl.innerHTML = ''; screenEl.appendChild(newNode); }
+  });
+  return wrap;
+}
+
+function screenSoftnessResult() {
+  let pairSoft = '';
+  let pairedSoft = false;
+
+  if (state.soft === true) {
+    if (SOFT_PAIRABLE.has(state.letter)) { pairedSoft = true; pairSoft = state.letter + ' (тв.)'; }
+  } else {
+    if (SOFT_PAIRABLE.has(state.letter)) { pairedSoft = true; pairSoft = state.letter + 'ь'; }
+  }
+  state.pairedSoft = pairedSoft;
+  state.pairSoftLetter = pairedSoft ? pairSoft : '';
+
+  const word = state.soft ? 'мягкая' : 'твёрдая';
+  const colorCls = state.soft ? 'soft' : 'hard';
+  const shapeCls = state.voiced ? 'tri' : 'sq';
+
+  screens[8] = screenFinal;
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="shape-base ${colorCls} ${shapeCls} flash"><span>${esc(state.letter)}</span></div>
+      <h1>${makeShape(state.letter, { size: 'inline', voiced: state.voiced, soft: state.soft })} — ${word}!</h1>
+      <h2>${state.soft ? 'Мягкость придаёт соседняя смягчающая буква.' : 'Твёрдость — когда рядом нет смягчающей буквы.'}</h2>
+      <button class="btn" id="next">Узнать итог →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => next());
+  return wrap;
+}
+
+function screenFinal() {
+  const isVowel = state.isVowel;
+  const voiceWord = state.voiced ? 'звонкая' : 'глухая';
+  const voiceCls  = state.voiced ? 'voiced' : 'deaf';
+  const voicePairWord = state.pairedVoice ? 'парная' : 'непарная';
+  const softWord = state.soft ? 'мягкая' : 'твёрдая';
+  const softCls  = state.soft ? 'soft' : 'hard';
+  const softPairWord = state.pairedSoft ? 'парная' : 'непарная';
+
+  let badge = '';
+  if (state.pairedSoft && state.pairSoftLetter) {
+    badge = state.pairSoftLetter.replace(/\s*\(.*?\)\s*/g, '').replace('ь', ''); 
+  }
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="final-letter">
+        ${makeShape(state.letter, { size: 'big', isVowel, voiced: state.voiced, soft: state.soft, badge })}
+        ${state.pairSoftLetter ? `<div class="pair-small ${state.voiced ? 'tri' : 'sq'}" style="background: var(--${state.soft ? 'soft' : 'hard'})">${esc(state.pairSoftLetter)}</div>` : ''}
+      </div>
+      <h1 style="margin-top:28px;">Итог по букве ${esc(state.letter)}</h1>
+      <div class="summary">
+        ${isVowel
+          ? `<div class="summary-row"><span class="k">Тип</span><span class="v vowel">Гласная</span></div>
+             <div class="summary-row"><span class="k">Ударение</span><span class="v">${state.stress || '—'}</span></div>`
+          : `<div class="summary-row"><span class="k">Тип</span><span class="v" style="color:var(--consonant)">Согласная</span></div>
+             <div class="summary-row"><span class="k">Звонкость</span><span class="v ${voiceCls}">${voiceWord}</span></div>
+             <div class="summary-row"><span class="k">Пара по звонкости</span><span class="v ${state.pairedVoice ? 'paired' : 'unpaired'}">${voicePairWord}</span></div>
+             <div class="summary-row"><span class="k">Мягкость</span><span class="v ${softCls}">${softWord}</span></div>
+             <div class="summary-row"><span class="k">Пара по мягкости</span><span class="v ${state.pairedSoft ? 'paired' : 'unpaired'}">${softPairWord}</span></div>`
+        }
+      </div>
+      <button class="btn" id="restart">Перейти к следующей букве ↺</button>
+    </div>
+  `);
+  wrap.querySelector('#restart').addEventListener('click', () => {
+    resetState();
+    screens[2] = screenVowelInfo;
+    screens[3] = screenStressQuestion;
+    screens[4] = () => screenVowelResult(true);
+    screens[5] = screenVoicePairQuestion;
+    screens[6] = screenSoftnessLogic;
+    screens[7] = screenSoftnessResult;
+    screens[8] = screenFinal;
+    goTo(0, 'back');
+  });
+  return wrap;
+}
+
+// ---------- ИНИЦИАЛИЗАЦИЯ ----------
+screens.push(screenLetterInput);              // 0
+screens.push(screenOpenMouthQuestion);        // 1
+screens.push(screenVowelInfo);                // 2
+screens.push(screenStressQuestion);           // 3
+screens.push(() => screenVowelResult(true));  // 4
+screens.push(screenVoicePairQuestion);        // 5
+screens.push(screenSoftnessLogic);            // 6
+screens.push(screenSoftnessResult);           // 7
+screens.push(screenFinal);                    // 8
+
+currentIndex = 0;
+render();
