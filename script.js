@@ -321,4 +321,283 @@ function screenConsonantInfo() {
 function screenStressQuestion() {
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="letter-icon vowel is-filled">${esc(state.letter
+      <div class="letter-icon vowel is-filled">${esc(state.letter)}</div>
+      <h1>Позовите разбираемое слово — ${shapeSpan()} тянется?</h1>
+      <h2>Ударная гласная звучит дольше и сильнее</h2>
+      <div class="btn-row">
+        <button class="btn btn-yes" id="yes">Да, тянется</button>
+        <button class="btn btn-no"  id="no">Нет, не тянется</button>
+      </div>
+      <div id="hint" class="hint-text hidden"></div>
+    </div>
+  `);
+  // Здесь оба ответа «правильные» (нельзя проверить без слова) — просто фиксируем
+  const yesBtn = wrap.querySelector('#yes');
+  const noBtn  = wrap.querySelector('#no');
+  yesBtn.addEventListener('click', () => {
+    state.stress = 'ударная';
+    screens[4] = () => screenVowelResult(true);
+    next();
+  });
+  noBtn.addEventListener('click', () => {
+    state.stress = 'безударная';
+    screens[4] = () => screenVowelResult(false);
+    next();
+  });
+  return wrap;
+}
+
+// 4-Г. Итог гласной
+function screenVowelResult(isStressed) {
+  const word = isStressed ? 'ударная' : 'безударная';
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon vowel is-filled">${esc(state.letter)}</div>
+      <h1>${shapeSpan()} ${word}!</h1>
+      <h2>Получается: ${shapeSpan()} — гласная, ${word}.</h2>
+      <div class="summary">
+        <div class="summary-row"><span class="k">Тип</span><span class="v vowel">Гласная</span></div>
+        <div class="summary-row"><span class="k">Ударение</span><span class="v">${word}</span></div>
+      </div>
+      <button class="btn" id="restart">Перейти к следующей букве ↺</button>
+    </div>
+  `);
+  wrap.querySelector('#restart').addEventListener('click', () => {
+    resetState();
+    screens[2] = screenVowelInfo;
+    screens[3] = screenStressQuestion;
+    screens[4] = () => screenVowelResult(true);
+    goTo(0, 'back');
+  });
+  return wrap;
+}
+
+// 3-С. Вопрос про вибрацию (звонкость)
+function screenVoiceQuestion() {
+  // Определяем правильный ответ по таблицам
+  const isVoicedCorrect = !UNPAIRED_DEAF.has(state.letter) && !['п','ф','к','т','ш','с','х','ц','ч','щ'].includes(state.letter);
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon">${esc(state.letter)}</div>
+      <h1>Произнося ${shapeSpan()}, приложите руку к горлу. Чувствуете вибрацию?</h1>
+      <h2>Если да — буква звонкая, если нет — глухая</h2>
+      <div class="btn-row">
+        <button class="btn btn-yes" id="yes">Да, чувствую</button>
+        <button class="btn btn-no"  id="no">Нет вибрации</button>
+      </div>
+      <div id="hint" class="hint-text hidden"></div>
+    </div>
+  `);
+  bindYesNo(wrap, {
+    correctIsYes: isVoicedCorrect,
+    hintWrong: isVoicedCorrect
+      ? 'Приложите руку к горлу и произнесите букву с голосом — должна быть вибрация.'
+      : 'Горло не вибрирует — звук глухой, голосовые связки не работают.',
+    onCorrect: () => {
+      state.voiced = isVoicedCorrect;
+      screens[4] = () => screenVoiceResult(isVoicedCorrect);
+      next();
+    }
+  });
+  return wrap;
+}
+
+// 4-С. Итог по звонкости + переход к паре
+function screenVoiceResult(isVoiced) {
+  const word = isVoiced ? 'звонкая' : 'глухая';
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon ${isVoiced ? 'voiced tri is-filled' : 'deaf sq is-filled'}">${esc(state.letter)}</div>
+      <h1>${shapeSpan()} — ${word}!</h1>
+      <h2>${isVoiced
+        ? 'Голосовые связки вибрируют — это звонкий звук.'
+        : 'Голосовые связки не вибрируют — это глухой звук.'}</h2>
+      <button class="btn" id="next">Дальше →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => {
+    screens[5] = screenVoicePairQuestion;
+    next();
+  });
+  return wrap;
+}
+
+// 4.5 Парность по звонкости
+function screenVoicePairQuestion() {
+  const correctPaired = Boolean(VOICE_PAIRS[state.letter]);
+  const pairLetter = VOICE_PAIRS[state.letter] || '';
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon ${state.voiced ? 'voiced tri' : 'deaf sq'} is-filled">${esc(state.letter)}</div>
+      <h1>Есть ли у буквы ${shapeSpan()} пара по звонкости/глухости?</h1>
+      <h2>Например, у «б» пара — «п», у «з» — «с»</h2>
+      <div class="btn-row">
+        <button class="btn btn-yes" id="yes">Да, есть</button>
+        <button class="btn btn-no"  id="no">Нет, непарная</button>
+      </div>
+      <div id="hint" class="hint-text hidden"></div>
+    </div>
+  `);
+  bindYesNo(wrap, {
+    correctIsYes: correctPaired,
+    hintWrong: correctPaired
+      ? `У этой буквы есть пара: «${pairLetter}». Вспомни алфавит.`
+      : 'Эта буква не имеет пары по звонкости — она непарная.',
+    onCorrect: () => {
+      state.pairedVoice = correctPaired;
+      state.pairVoiceLetter = correctPaired ? pairLetter : '';
+      screens[6] = screenSoftnessQuestion;
+      next();
+    }
+  });
+  return wrap;
+}
+
+// 5. Мягкость через последовательность гласных
+const SOFT_QUESTION_SEQUENCE = ['е','ё','и','ю','я','ь','а','о','у','ы','э'];
+
+function screenSoftnessQuestion() {
+  if (state.soft !== null) return screenSoftnessResult();
+
+  const ch = SOFT_QUESTION_SEQUENCE[state.softStep];
+  if (!ch) {
+    // Все «нет» — твёрдая
+    state.soft = false;
+    return screenSoftnessResult();
+  }
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon ${state.voiced ? 'voiced tri' : 'deaf sq'} is-filled">${esc(state.letter)}</div>
+      <h1>После вашей ${shapeSpan()} в слове есть буква «${esc(ch)}»?</h1>
+      <h2>Проверяем, смягчает ли она ваш согласный</h2>
+      <div class="btn-row">
+        <button class="btn btn-yes" id="yes">Да, есть</button>
+        <button class="btn btn-no"  id="no">Нет</button>
+      </div>
+      <div id="hint" class="hint-text hidden"></div>
+    </div>
+  `);
+  // Оба ответа валидны — фиксируем и идём дальше
+  wrap.querySelector('#yes').addEventListener('click', () => {
+    if (SOFTENING.includes(ch)) state.soft = true;
+    else state.soft = false;
+    screens[7] = screenSoftnessResult;
+    next();
+  });
+  wrap.querySelector('#no').addEventListener('click', () => {
+    state.softStep += 1;
+    // перерисовываем этот же экран
+    const newNode = screenSoftnessQuestion();
+    screenEl.innerHTML = '';
+    screenEl.appendChild(newNode);
+    setFloatingShape();
+  });
+  return wrap;
+}
+
+// 6. Итог мягкости + пара
+function screenSoftnessResult() {
+  let pairSoft = '';
+  let pairedSoft = false;
+
+  if (state.soft === true) {
+    if (SOFT_PAIRABLE.has(state.letter)) { pairedSoft = true; pairSoft = state.letter + ' (тв.)'; }
+  } else {
+    if (SOFT_PAIRABLE.has(state.letter)) { pairedSoft = true; pairSoft = state.letter + 'ь'; }
+  }
+  state.pairedSoft = pairedSoft;
+  state.pairSoftLetter = pairedSoft ? pairSoft : '';
+
+  const word = state.soft ? 'мягкая' : 'твёрдая';
+  const colorCls = state.soft ? 'soft' : 'hard';
+  const shapeCls = state.voiced ? 'tri' : 'sq';
+
+  screens[8] = screenFinal;
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="letter-icon ${colorCls} ${shapeCls} is-filled">${esc(state.letter)}</div>
+      <h1>${shapeSpan()} — ${word}!</h1>
+      <h2>${state.soft
+        ? 'Мягкость придаёт соседняя смягчающая буква (е, ё, и, ю, я или ь).'
+        : 'Твёрдость — когда рядом нет смягчающей буквы.'}</h2>
+      <button class="btn" id="next">Узнать итог →</button>
+    </div>
+  `);
+  wrap.querySelector('#next').addEventListener('click', () => next());
+  return wrap;
+}
+
+// 7. Финальный экран
+function screenFinal() {
+  const isVowel = state.isVowel;
+  const voiceWord = state.voiced ? 'звонкая' : 'глухая';
+  const voiceCls  = state.voiced ? 'voiced' : 'deaf';
+  const voicePairWord = state.pairedVoice ? `есть (${state.pairVoiceLetter})` : 'непарная';
+
+  const softWord = state.soft ? 'мягкая' : 'твёрдая';
+  const softCls  = state.soft ? 'soft' : 'hard';
+  const softPairWord = state.pairedSoft ? `есть (${state.pairSoftLetter})` : 'непарная';
+
+  const bigShapeClass = isVowel
+    ? 'vowel is-filled'
+    : state.voiced
+      ? `voiced tri is-filled${state.soft === true ? ' soft' : state.soft === false ? ' hard' : ''}`
+      : `deaf sq is-filled${state.soft === true ? ' soft' : state.soft === false ? ' hard' : ''}`;
+
+  const smallPairClass = state.voiced ? 'tri' : 'sq';
+  const smallPairColor = state.soft ? 'soft' : 'hard';
+
+  const wrap = el(`
+    <div class="screen-inner center">
+      <div class="final-letter">
+        <div class="big shape-base ${bigShapeClass}">${esc(state.letter)}</div>
+        ${state.pairSoftLetter
+          ? `<div class="pair-small ${smallPairClass} ${smallPairColor}">${esc(state.pairSoftLetter)}</div>`
+          : ''}
+      </div>
+      <h1 style="margin-top:18px;">Итог по букве ${esc(state.letter)}</h1>
+      <div class="summary">
+        ${isVowel
+          ? `<div class="summary-row"><span class="k">Тип</span><span class="v vowel">Гласная</span></div>
+             <div class="summary-row"><span class="k">Ударение</span><span class="v">${state.stress || '—'}</span></div>`
+          : `<div class="summary-row"><span class="k">Тип</span><span class="v" style="color:var(--consonant)">Согласная</span></div>
+             <div class="summary-row"><span class="k">Звонкость</span><span class="v ${voiceCls}">${voiceWord}</span></div>
+             <div class="summary-row"><span class="k">Пара по звонкости</span><span class="v ${state.pairedVoice ? 'paired' : 'unpaired'}">${voicePairWord}</span></div>
+             <div class="summary-row"><span class="k">Мягкость</span><span class="v ${softCls}">${softWord}</span></div>
+             <div class="summary-row"><span class="k">Пара по мягкости</span><span class="v ${state.pairedSoft ? 'paired' : 'unpaired'}">${softPairWord}</span></div>`
+        }
+      </div>
+      <button class="btn" id="restart">Перейти к следующей букве ↺</button>
+    </div>
+  `);
+  wrap.querySelector('#restart').addEventListener('click', () => {
+    resetState();
+    screens[2] = screenVowelInfo;
+    screens[3] = screenStressQuestion;
+    screens[4] = () => screenVowelResult(true);
+    screens[5] = screenVoicePairQuestion;
+    screens[6] = screenSoftnessQuestion;
+    screens[7] = screenSoftnessResult;
+    screens[8] = screenFinal;
+    goTo(0, 'back');
+  });
+  return wrap;
+}
+
+// ---------- ИНИЦИАЛИЗАЦИЯ ----------
+screens.push(screenLetterInput);              // 0
+screens.push(screenOpenMouthQuestion);        // 1
+screens.push(screenVowelInfo);                // 2
+screens.push(screenStressQuestion);           // 3
+screens.push(() => screenVowelResult(true));  // 4
+screens.push(screenVoicePairQuestion);        // 5
+screens.push(screenSoftnessQuestion);         // 6
+screens.push(screenSoftnessResult);           // 7
+screens.push(screenFinal);                    // 8
+
+currentIndex = 0;
+render();
