@@ -48,13 +48,12 @@ function esc(s) {
   ));
 }
 
-// Генератор фигур
 function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', isVowel = null, voiced = null, soft = null } = {}) {
   let classes = ['shape-base'];
   let badgeHtml = '';
 
   if (forceWhite || (isVowel === null && voiced === null)) {
-    // Белый круг
+    // Белый
   } else {
     if (isVowel) {
       classes.push('vowel');
@@ -370,15 +369,20 @@ function screenVoicePairQuestion() {
   return wrap;
 }
 
-// Логика мягкости
+// Исправленная логика мягкости (без return null)
 function screenSoftnessLogic() {
   if (UNPAIRED_SOFT.has(state.letter) || UNPAIRED_HARD.has(state.letter)) {
     state.soft = UNPAIRED_SOFT.has(state.letter);
     state.pairedSoft = false;
     state.pairSoftLetter = '';
-    screens[7] = screenFinal; // Сразу в финал
-    next();
-    return null; // Не рендерим ничего
+    
+    // Чтобы анимация перехода сработала корректно, возвращаем пустой div,
+    // а в nextTick перекидываем на финальный экран.
+    setTimeout(() => {
+      currentIndex = 8; // Индекс финального экрана
+      render();
+    }, 10);
+    return el('<div></div>'); 
   }
 
   return screenSoftnessQuestion();
@@ -460,18 +464,15 @@ function screenFinal() {
   const voiceWord = state.voiced ? 'звонкая' : 'глухая';
   const voiceCls  = state.voiced ? 'voiced' : 'deaf';
   
-  // Убрали скобки
   const voicePairWord = state.pairedVoice ? 'парная' : 'непарная';
 
   const softWord = state.soft ? 'мягкая' : 'твёрдая';
   const softCls  = state.soft ? 'soft' : 'hard';
   
-  // Убрали скобки
   const softPairWord = state.pairedSoft ? 'парная' : 'непарная';
 
   let badge = '';
   if (state.pairedSoft && state.pairSoftLetter) {
-    // Отображаем только саму букву в бейдже
     badge = state.pairSoftLetter.replace(/\s*\(.*?\)\s*/g, '').replace('ь', ''); 
   }
 
@@ -522,3 +523,4 @@ screens.push(screenSoftnessResult);           // 7
 screens.push(screenFinal);                    // 8
 
 currentIndex = 0;
+render();
