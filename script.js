@@ -27,21 +27,26 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', isVowel = null, voiced = null, soft = null } = {}) {
+/**
+ * Универсальный генератор фигур.
+ * Форма определяется параметром voiced (если не null).
+ * Цвет — параметрами isVowel, soft. Если не переданы, фигура белая.
+ */
+function makeShape(letter, { size = 'normal', badge = '', isVowel = null, voiced = null, soft = null } = {}) {
   let classes = ['shape-base'];
   let badgeHtml = '';
 
-  if (!forceWhite && (isVowel !== null || voiced !== null || soft !== null)) {
-    if (isVowel) classes.push('vowel');
-    else if (voiced !== null) {
-      classes.push(voiced ? 'tri' : 'sq');
-      if (soft === true) classes.push('soft');
-      else if (soft === false) classes.push('hard');
-      else classes.push(voiced ? 'voiced' : 'deaf');
-    }
-  } else {
-    if (voiced === true) classes.push('tri');
-    if (voiced === false) classes.push('sq');
+  // 1. Определяем ФОРМУ
+  if (voiced === true) classes.push('tri');
+  else if (voiced === false) classes.push('sq');
+
+  // 2. Определяем ЦВЕТ (только если явно задан)
+  if (isVowel === true) {
+    classes.push('vowel');
+  } else if (voiced !== null) {
+    if (soft === true) classes.push('soft');
+    else if (soft === false) classes.push('hard');
+    else classes.push(voiced ? 'voiced' : 'deaf'); // На этапе вопросов о парности/мягкости
   }
 
   if (size === 'big') classes.push('big');
@@ -148,7 +153,7 @@ function screenOpenMouthQuestion() {
   const wrap = el(`
     <div class="screen-inner center">
       <div class="shape-base"><span>${esc(state.letter)}</span></div>
-      <h1>Ваша буква ${makeShape(state.letter, { size: 'inline', forceWhite: true })} может быть сказана с открытым ртом, без использования языка?</h1>
+      <h1>Ваша буква ${makeShape(state.letter, { size: 'inline' })} может быть сказана с открытым ртом, без использования языка?</h1>
       <h2>Попробуйте произнести её и почувствуйте</h2>
       <div class="btn-row"><button class="btn btn-yes" id="yes">Да</button><button class="btn btn-no" id="no">Нет</button></div>
       <div id="hint" class="hint-text"></div>
@@ -226,7 +231,7 @@ function screenVoiceQuestion() {
   const wrap = el(`
     <div class="screen-inner center">
       <div class="shape-base"><span>${esc(state.letter)}</span></div>
-      <h1>Произнося ${makeShape(state.letter, { size: 'inline', forceWhite: true })}, приложите руку к горлу. Чувствуете вибрацию?</h1>
+      <h1>Произнося ${makeShape(state.letter, { size: 'inline' })}, приложите руку к горлу. Чувствуете вибрацию?</h1>
       <h2>Если да — буква звонкая, если нет — глухая</h2>
       <div class="btn-row"><button class="btn btn-yes" id="yes">Да</button><button class="btn btn-no" id="no">Нет</button></div>
       <div id="hint" class="hint-text"></div>
@@ -242,10 +247,11 @@ function screenVoiceQuestion() {
 
 function screenVoiceResult(isVoiced) {
   const word = isVoiced ? 'звонкая' : 'глухая';
+  // Передаем voiced, но НЕ передаем soft. Значит, форма будет (треугольник/квадрат), но цвет останется белым, так как soft === null
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base ${isVoiced ? 'tri' : 'sq'} flash"><span>${esc(state.letter)}</span></div>
-      <h1>${makeShape(state.letter, { size: 'inline', voiced: isVoiced, forceWhite: true })} — ${word}!</h1>
+      ${makeShape(state.letter, { size: 'big', voiced: isVoiced })}
+      <h1 style="margin-top:20px;">${makeShape(state.letter, { size: 'inline', voiced: isVoiced })} — ${word}!</h1>
       <h2>${isVoiced ? 'Голосовые связки вибрируют. Форма стала треугольной.' : 'Голосовые связки не вибрируют. Форма стала квадратной.'}</h2>
       <button class="btn" id="next">Дальше →</button>
     </div>
@@ -260,8 +266,8 @@ function screenVoicePairQuestion() {
 
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base ${state.voiced ? 'tri' : 'sq'}"><span>${esc(state.letter)}</span></div>
-      <h1>Есть ли у буквы ${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} пара по звонкости/глухости?</h1>
+      ${makeShape(state.letter, { size: 'big', voiced: state.voiced })}
+      <h1 style="margin-top:20px;">Есть ли у буквы ${makeShape(state.letter, { size: 'inline', voiced: state.voiced })} пара по звонкости/глухости?</h1>
       <div class="btn-row"><button class="btn btn-yes" id="yes">Да, есть</button><button class="btn btn-no" id="no">Нет, непарная</button></div>
       <div id="hint" class="hint-text"></div>
     </div>
@@ -289,8 +295,8 @@ function screenUnpairedInfo() {
   const word = state.soft ? 'мягкая' : 'твёрдая';
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base ${state.voiced ? 'tri' : 'sq'} flash"><span>${esc(state.letter)}</span></div>
-      <h1>${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} — всегда ${word}!</h1>
+      ${makeShape(state.letter, { size: 'big', voiced: state.voiced })}
+      <h1 style="margin-top:20px;">${makeShape(state.letter, { size: 'inline', voiced: state.voiced })} — всегда ${word}!</h1>
       <h2>У неё нет пары по твёрдости/мягкости.</h2>
       <button class="btn" id="next">Узнать итог →</button>
     </div>
@@ -309,8 +315,8 @@ function screenSoftnessQuestion() {
 
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base ${state.voiced ? 'tri' : 'sq'}"><span>${esc(state.letter)}</span></div>
-      <h1>После вашей ${makeShape(state.letter, { size: 'inline', voiced: state.voiced, forceWhite: true })} в слове есть буква «${esc(ch)}»?</h1>
+      ${makeShape(state.letter, { size: 'big', voiced: state.voiced })}
+      <h1 style="margin-top:20px;">После вашей ${makeShape(state.letter, { size: 'inline', voiced: state.voiced })} в слове есть буква «${esc(ch)}»?</h1>
       <h2>${ch === 'ь' ? 'Мягкий знак делает предыдущий согласный мягким.' : 'Проверяем, смягчает ли она ваш согласный'}</h2>
       <div class="btn-row"><button class="btn btn-yes" id="yes">Да, есть</button><button class="btn btn-no" id="no">Нет</button></div>
       <div id="hint" class="hint-text"></div>
@@ -343,15 +349,13 @@ function screenSoftnessResult() {
   state.pairSoftLetter = pairedSoft ? pairSoft : '';
 
   const word = state.soft ? 'мягкая' : 'твёрдая';
-  const colorCls = state.soft ? 'soft' : 'hard';
-  const shapeCls = state.voiced ? 'tri' : 'sq';
-
   screens[8] = screenFinal;
 
+  // Теперь мы наконец-то передаем soft, и фигура окрашивается в зеленый/синий
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base ${colorCls} ${shapeCls} flash"><span>${esc(state.letter)}</span></div>
-      <h1>${makeShape(state.letter, { size: 'inline', voiced: state.voiced, soft: state.soft })} — ${word}!</h1>
+      ${makeShape(state.letter, { size: 'big', voiced: state.voiced, soft: state.soft })}
+      <h1 style="margin-top:20px;">${makeShape(state.letter, { size: 'inline', voiced: state.voiced, soft: state.soft })} — ${word}!</h1>
       <h2>${state.soft ? 'Мягкость придаёт соседняя смягчающая буква.' : 'Твёрдость — когда рядом нет смягчающей буквы.'}</h2>
       <button class="btn" id="next">Узнать итог →</button>
     </div>
