@@ -27,12 +27,10 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// Генератор фигур. Всегда БЕЛАЯ с чёрной обводкой, если не передан цвет.
 function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', isVowel = null, voiced = null, soft = null } = {}) {
   let classes = ['shape-base'];
   let badgeHtml = '';
 
-  // Если цвета не переданы — оставляем белой
   if (!forceWhite && (isVowel !== null || voiced !== null || soft !== null)) {
     if (isVowel) classes.push('vowel');
     else if (voiced !== null) {
@@ -42,7 +40,6 @@ function makeShape(letter, { size = 'normal', forceWhite = false, badge = '', is
       else classes.push(voiced ? 'voiced' : 'deaf');
     }
   } else {
-    // Принудительно белая, но форма может быть (для вопросов до цвета)
     if (voiced === true) classes.push('tri');
     if (voiced === false) classes.push('sq');
   }
@@ -150,7 +147,7 @@ function mapLatinToCyrillic(ch) {
 function screenOpenMouthQuestion() {
   const wrap = el(`
     <div class="screen-inner center">
-      <div class="shape-base">${esc(state.letter)}</div>
+      <div class="shape-base"><span>${esc(state.letter)}</span></div>
       <h1>Ваша буква ${makeShape(state.letter, { size: 'inline', forceWhite: true })} может быть сказана с открытым ртом, без использования языка?</h1>
       <h2>Попробуйте произнести её и почувствуйте</h2>
       <div class="btn-row"><button class="btn btn-yes" id="yes">Да</button><button class="btn btn-no" id="no">Нет</button></div>
@@ -243,7 +240,6 @@ function screenVoiceQuestion() {
   return wrap;
 }
 
-// Меняем ТОЛЬКО ФОРМУ, без цвета
 function screenVoiceResult(isVoiced) {
   const word = isVoiced ? 'звонкая' : 'глухая';
   const wrap = el(`
@@ -262,7 +258,6 @@ function screenVoicePairQuestion() {
   const correctPaired = Boolean(VOICE_PAIRS[state.letter]);
   const pairLetter = VOICE_PAIRS[state.letter] || '';
 
-  // Без серой надписи
   const wrap = el(`
     <div class="screen-inner center">
       <div class="shape-base ${state.voiced ? 'tri' : 'sq'}"><span>${esc(state.letter)}</span></div>
